@@ -1,16 +1,73 @@
-= mongo_queue
+= MongoQueue
 
-Description goes here.
+An extensible thread safe job/message queueing system that uses mongodb as the persistent storage engine.
 
-== Note on Patches/Pull Requests
- 
-* Fork the project.
-* Make your feature addition or bug fix.
-* Add tests for it. This is important so I don't break it in a
-  future version unintentionally.
-* Commit, do not mess with rakefile, version, or history.
-  (if you want to have your own version, that is fine but bump version in a commit by itself I can ignore when I pull)
-* Send me a pull request. Bonus points for topic branches.
+== Features
+* Fully Configurable
+* Distributed
+* Atomic Locking
+* Thread Safe
+* Priority Support
+* Worker Timeout Support
+* Fully Tested
+* Production Ready
+* Simple API
+
+== Examples
+
+=== Setting up a queue
+When instantiating the MonogoQueue, there are several options which can be used to configure how it will act.
+You can configure everything from where the data is stored, to the amount of time which a message can be
+locked, to the number of times the job will be attempted, and more. Below are the default configuration options
+which can be adjusted to your taste.
+
+    db = Mongo::Connection.whatever...
+
+    options = {
+      :database   => 'mongo_queue', 
+      :collection => 'mongo_queue',
+      :timeout    => 30, # number of seconds that an item will remain locked
+      :attempts   => 3   # number of times attempts to lock and complete the item before ignoring
+    }
+    queue = MongoQueue.new(db, options)
+
+=== Inserting Jobs
+A job is inserted as a hash in to the document store, but you will want to avoid using the protected keys which
+enable MongoQueue to operate effectively as a queue system. Avoid using the following fields in your queue messages;
+* locked_at
+* locked_by
+* attempts
+* timeout
+* time
+* priority
+* last_error
+    
+    job = {
+      :url      => 'http://example.com/',
+      :foo      => 'More Stuff',
+      :priority => 10
+    }
+    queue.insert(job)
+
+=== Simple Job Worker Example
+Generally when using a message queue, you will want to iterate over job items and continue to do so until all
+jobs have been completed. This can be completed within a loop, and even be threaded easily. You will want to 
+make sure that you generate a unique string which you can reference the worker with throughout it's lifetime.
+
+    require 'digest/md5'
+    process_id = Digest::MD5.hexdigest("#{Socket.gethostname}-#{Process.pid}-#{Thread.current}")
+
+    queue.cleanup! # remove expired locks
+
+    while(doc = queue.lock_next(process_id))
+      begin
+        do_some_work(doc)
+        queue.complete(doc, process_id)
+        sleep(1)
+      rescue StandardError => e
+        queue.error(doc, e.message)
+      end
+    end
 
 == Copyright
 
