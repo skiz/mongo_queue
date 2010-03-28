@@ -28,7 +28,7 @@ Gem::Specification.new do |s|
      "spec/mongo_queue_spec.rb",
      "spec/spec_helper.rb"
   ]
-  s.homepage = %q{http://github.com/skiz/mongo_queue}
+  s.homepage = %q{http://github.com/Skiz/mongo_queue}
   s.rdoc_options = ["--charset=UTF-8"]
   s.require_paths = ["lib"]
   s.rubygems_version = %q{1.3.5}
