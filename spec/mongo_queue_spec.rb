@@ -1,201 +1,124 @@
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
-describe MongoQueue do
+describe Mongo::Queue do
+  
+  before(:suite) do
+    opts   = {
+      :database   => 'mongo_queue_spec',
+      :collection => 'spec',
+      :attempts   => 4,
+      :timeout    => 60}
+    @@db = Mongo::Connection.new('localhost', nil, :pool_size => 4)
+    @@queue = Mongo::Queue.new(@@db, opts)
+  end
   
   before(:each) do
-    @mc = mock('MongoCollection')
-    @db = mock('MongoDatabase',:collection => @mc)
-    @cp = mock('MongoConnectionPool', :db => @db)
-    @queue = MongoQueue.new(@cp)
+    @@queue.flush!
   end
   
   describe "Configuration" do
-    before(:each) do
-      opts = {
-        :database   => 'spec_db',
-        :collection => 'spec_co',
-        :attempts   => 99,
-        :timeout    => 10
-      }
-      @queue = MongoQueue.new(@cp,opts)
-    end
 
     it "should set the connection" do
-      @queue.connection.should be(@cp)
+      @@queue.connection.should be(@@db)
     end
-    
-    it "should have a proper connection reference" do
-      @queue.send(:collection).should be(@mc)
-    end
-    
-    it "should have a sane set of defaults" do
-      queue = MongoQueue.new(@cp)
-      queue.config.should eql({
-        :database   => 'mongo_queue' ,
-        :collection => 'mongo_queue',
-        :attempts   => 3,
-        :timeout    => 18000
-      })
-    end
-    
+
     it "should allow database option" do
-      @queue.config[:database].should eql('spec_db')
+      @@queue.config[:database].should eql('mongo_queue_spec')
     end
     
     it "should allow collection option" do
-      @queue.config[:collection].should eql('spec_co')
+      @@queue.config[:collection].should eql('spec')
     end
 
     it "should allow attempts option" do
-      @queue.config[:attempts].should eql(99)
+      @@queue.config[:attempts].should eql(4)
+    end
+  
+    it "should allow timeout option" do
+      @@queue.config[:timeout].should eql(60)
+    end
+  
+    it "should have a sane set of defaults" do
+      q = Mongo::Queue.new(nil)
+      q.config[:collection].should eql 'mongo_queue'
+      q.config[:attempts].should   eql 3
+      q.config[:timeout].should    eql 300
+    end
+  end
+
+  describe "Inserting a Job" do
+    before(:each) do
+      @@queue.insert(:message => 'MongoQueueSpec')
+      @item = @@queue.send(:collection).find_one  
     end
     
-    it "should allow timeout option" do
-      @queue.config[:timeout].should eql(10)
+    it "should set priority to 0 by default" do
+      @item['priority'].should be(0)
     end
-
-  end
-  
-  describe "Inserting a Job" do
-    it "should provide method to insert items with proper elements" do
-      @mc.should_receive(:insert).with({
-        :message    => 'MongoQueueSpec',
-        :priority   => 0,
-        :attempts   => 0,
-        :locked_by  => nil,
-        :locked_at  => nil,
-        :last_error => nil
-      })
-      @queue.insert(:message => 'MongoQueueSpec')
+    
+    it "should set a null locked_by" do
+      @item['locked_by'].should be(nil)      
+    end
+    
+    it "should set a null locked_at" do
+      @item['locked_at'].should be(nil)
+    end
+    
+    it "should allow additional fields" do
+      @item['message'].should eql('MongoQueueSpec')
+    end
+    
+    it "should set a blank last_error" do
+      @item['last_error'].should be(nil)
     end
   end
-  
-  describe "Locking a Job" do
-  end
-  
-  describe "Unlocking a Job" do
-  end
-  
-  describe "Worker Timeout" do
+    
+  describe "Working with the queue" do
+    before(:each) do
+      @first  = @@queue.insert(:msg => 'First')
+      @second = @@queue.insert(:msg => 'Second', :priority => 2)
+      @third  = @@queue.insert(:msg => 'Third',  :priority => 6)
+      @fourth = @@queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
+    end
+    
+    it "should lock the next document by priority" do
+      doc = @@queue.lock_next('Test')
+      doc['msg'].should eql('Third')
+    end
+    
+    it "should release and relock the next document" do
+      @@queue.release(@fourth, 'Example')
+      @@queue.lock_next('Bob')['msg'].should eql('Fourth')
+    end
+    
+    it "should remove completed items" do
+      doc = @@queue.lock_next('grr')
+      @@queue.complete(doc,'grr')
+      @@queue.lock_next('grr')['msg'].should eql('Second')
+    end
+    
+    it "should return nil when unable to lock" do
+      4.times{ @@queue.lock_next('blah') }
+      @@queue.lock_next('blah').should eql(nil)
+    end
   end
   
   describe "Error Handling" do
+    it "should allow document error handling" do
+      doc = @@queue.insert(:stuff => 'Broken')
+      2.times{ @@queue.error(doc, 'I think I broke it') }
+      doc = @@queue.lock_next('Money')
+      doc['attempts'].should eql(2)
+      doc['last_error'].should eql('I think I broke it')
+    end
   end
   
-  describe "Removing Locks" do
+  describe "Cleaning up" do
+    it "should remove all of the stale locks" do
+      @@queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
+      @@queue.cleanup!
+      @@queue.lock_next('Foo')['msg'].should eql('Fourth')
+    end
   end
-  
-  
-  
-  # before(:each) do
-  #   @klass = Crawler::MongoQueue
-  #   @mc = mock('Collection')
-  #   @db = mock('MongoDb',:collection => @mc)
-  #   @cp = mock('MongoConnectionPool', :db => @db)
-  #   Crawler.stub!(:mongo_connection_pool).and_return(@cp)
-  #   @instance = Crawler::MongoQueue.new('test')
-  #   @queue_item = Hash.new(:url => 'http://example.com')
-  # end
-  # 
-  # describe "standard settings" do
-  #   it "should have a defined MAX_ATTEMPTS" do
-  #     @klass::MAX_ATTEMPTS.should eql(3)
-  #   end
-  #   
-  #   it "should have a lock timeout" do
-  #     @klass::MAX_TIMEOUT.should eql(60 * 60 * 5)
-  #   end
-  # end
-  # 
-  # describe "instantiating a queue" do
-  #   it "should require and set a collection name" do
-  #     qn = 'my_queue_name'
-  #     q = @klass.new(qn)
-  #     q.collection_name.should eql(qn)
-  #   end
-  # end
-  # 
-  # describe "obtaining a mongo connection" do
-  #   it "should properly provide a collection" do
-  #     q = @klass.new('test')
-  #     @db.should_receive(:collection).with('test').and_return(@mc)
-  #     q.send(:collection).should eql(@mc)
-  #   end
-  # end
-  # 
-  # describe "retrieving a record" do
-  #   it "should provide a find_next" do
-  #     @instance.should respond_to(:find_next)      
-  #   end
-  #   
-  #   it "should look for a queue item within the range required" do
-  #     @instance.should_receive(:clear_stale_locks)
-  #     @mc.should_receive(:find_one).with(
-  #     { :locked_at => nil, 
-  #       :locked_by => nil, 
-  #       :attempts  => {'$lt' => @klass::MAX_ATTEMPTS}}, 
-  #       :sort      => ['priority','descending']).and_return(@queue_item)
-  #     @instance.find_next.should_not be_nil
-  #   end
-  # end
-  # 
-  # describe "locking queue items" do
-  #   before(:each) do
-  #     @mc.stub!(:save)
-  #     @mc.stub!(:find_one).and_return(@queue_item)
-  #   end
-  #   
-  #   describe "creating locks" do
-  #     it "should set the locked_by and locked_at" do
-  #       @instance.lock(@queue_item, 'example')
-  #       @queue_item['locked_by'].should eql('example')
-  #       @queue_item['locked_at'].should_not be_nil
-  #     end
-  #     
-  #     it "should confirm that it has a lock before saving" do
-  #       @mc.should_receive(:save).with(@queue_item)
-  #       @instance.lock(@queue_item, 'example')
-  #     end
-  #   end
-  # 
-  #   describe "checking locks" do
-  #     it "should be able to find the currently locked items by locked_by" do
-  #       @mc.should_receive(:find_one).with({:locked_by => 'example'})
-  #       @instance.current_lock('example')
-  #     end
-  #   
-  #     it "should be able to verify a lock by locked_by" do
-  #       @queue_item['locked_by'] = 'example'
-  #       @instance.verify_lock(@queue_item, 'example').should be_true
-  #       @instance.verify_lock(@queue_item, 'invalid').should be_false
-  #     end
-  #   end
-  # 
-  #   describe "removing locks" do
-  #     it "should have the ability to clear all stale locks" do
-  #       mock_doc = @queue_item
-  #       mock_cursor = mock('MongoCursor')
-  #       mock_cursor.stub!(:next_document) do
-  #         mock_doc
-  #         mock_cursor.stub!(:next_document).and_return nil
-  #       end
-  #       Time.stub!(:now).and_return(999)
-  #       @mc.should_receive(:find).with({:locked_by => /.*/, :locked_at => {'$gt' => 999 - @klass::MAX_TIMEOUT}}).and_return(mock_cursor)
-  #       @instance.should_receive(:release)
-  #       @instance.clear_stale_locks
-  #     end
-  #     
-  #     it "should be able to release a lock directly with proper locked_by"
-  #     it "should provide a way to remove completed queue items"
-  #   end
-  #   
-  # end
-  # 
-  # describe "error handling" do
-  #   it "should update attempts when failed"
-  #   it "should store the last error"
-  #   it "should release any lock"
-  # end
-  # 
-  # 
+    
 end

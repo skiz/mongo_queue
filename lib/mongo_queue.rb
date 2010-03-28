@@ -1,10 +1,10 @@
-class MongoQueue
+class Mongo::Queue
   attr_reader :connection, :config
   
   DEFAULT_CONFIG = {
     :database   => 'mongo_queue',
     :collection => 'mongo_queue',
-    :timeout    => 18000,
+    :timeout    => 300,
     :attempts   => 3
   }.freeze
   
@@ -16,93 +16,102 @@ class MongoQueue
     :last_error => nil
   }.freeze
   
-  # Create a new instance of MongoQueue with the provided mongodb connection and optional configuration
+  # Create a new instance of MongoQueue with the provided mongodb connection and optional configuration.
+  # See +DEFAULT_CONFIG+ for default configuration and possible configuration options.
+  #
+  # Example:
+  #    db = Mongo::Connection.new('localhost')
+  #    config = {:timeout => 90, :attempts => 2}
+  #    queue = Mongo::Queue.new(db, config)
+  #
   def initialize(connection, opts={})
     @connection = connection
     @config = DEFAULT_CONFIG.merge(opts)
   end
   
+  # Remove all items from the queue. Use with caution!
+  def flush!
+    collection.drop
+  end
+  
   # Insert a new item in to the queue with required queue message parameters.
+  #
+  # Example:
+  #    queue.insert(:name => 'Billy', :email => 'billy@example.com', :message => 'Here is the thing you asked for')
   def insert(hash)
-    collection.insert DEFAULT_INSERT.merge(hash)
+    id = collection.insert DEFAULT_INSERT.merge(hash)
+    collection.find_one(:_id => Mongo::ObjectID.from_string(id.to_s))
   end
   
-  # Lock and return the next queue message
-  def lock_next(doc, locked_by)
-    collection.find_one({:locked_at => nil, :locked_by => nil, :attempts => {'$lt' => MAX_ATTEMPTS}}, :sort => ['priority','descending'])
+  # Lock and return the next queue message if one is available. Returns nil if none are available. Be sure to
+  # review the README.rdoc regarding proper usage of the locking process identifier (locked_by).
+  # Example:
+  #    locked_doc = queue.lock_next(Thread.current.object_id)
+  def lock_next(locked_by)
+    cmd = OrderedHash.new
+    cmd['findandmodify'] = @config[:collection]
+    cmd['update']        = {'$set' => {:locked_by => locked_by, :locked_at => Time.now.utc}} 
+    cmd['query']         = {:locked_by => nil, :locked_by => nil, :attempts => {'$lt' => @config[:attempts]}}
+    cmd['sort']          = sort_hash
+    cmd['limit']         = 1
+    cmd['new']           = true
+    value_of collection.db.command(cmd)
   end
   
-  
-  # Lock a document 
-  def lock(doc, locked_by)
-    doc['locked_by'] = locked_by
-    doc['locked_at'] = Time.now
-    collection.save(doc)
-  end
-  
-  # # find the next available lockable item
-  # def find_next
-  #   clear_stale_locks
-  #   collection.find_one({:locked_at => nil, :locked_by => nil, :attempts => {'$lt' => MAX_ATTEMPTS}}, :sort => ['priority','descending'])
-  # end
-  # 
-  
-  # Removes stale locks that have exceeded the timeout, and put them back in the queue.
-  def cleanup
-    cursor = collection.find({:locked_by => /.*/, :locked_at => {'$gt' => Time.now - MAX_TIMEOUT}})
+  # Removes stale locks that have exceeded the timeout and places them back in the queue.
+  def cleanup!
+    cursor = collection.find({:locked_by => /.*/, :locked_at => {'$lt' => Time.now.utc - config[:timeout]}})
     doc = cursor.next_document
     while doc
       release(doc, doc['locked_by'])
       doc = cursor.next_document
     end
   end
-  # 
-  # # attempt to lock an item in the queue for processing
-  # def lock(doc, locked_by)
-  #   return false unless doc
-  #   doc['locked_by'] = locked_by
-  #   doc['locked_at'] = Time.now
-  #   collection.save(doc)
-  #   verify_lock(doc, locked_by)
-  # end
-  # 
-  # # returns a currently locked doc
-  # def current_lock(locked_by)
-  #   collection.find_one({:locked_by => locked_by})
-  # end
-  # 
-  # # release the queue item lock
-  # def release(doc, locked_by)
-  #   if verify_lock(doc, locked_by) && locked_by == doc['locked_by']
-  #     doc['locked_by'] = nil
-  #     doc['locked_at'] = nil
-  #     collection.save(doc)
-  #   end
-  # end
-  # 
-  # # remove the document from the queue
-  # def complete(doc, locked_by)
-  #   return false unless verify_lock(doc, locked_by)
-  #   collection.remove(doc)
-  # end
-  # 
-  # # does the specific locked_by have a lock?
-  # def verify_lock(doc, locked_by)
-  #   doc['locked_by'] == locked_by ? doc : false
-  # end
-  # 
-  # # increase the errors on the locked doc and release
-  # def error(doc, error_message=nil)
-  #   doc['attempts'] ||= 0
-  #   doc['attempts'] += 1
-  #   doc['last_error'] = error_message
-  #   release(doc, doc['locked_by'])
-  # end
-  # 
+  
+  # Release a lock on the specified document and allow it to become available again.
+  def release(doc, locked_by)
+    cmd = OrderedHash.new
+    cmd['findandmodify'] = @config[:collection]
+    cmd['update']        = {'$set' => {:locked_by => nil, :locked_at => nil}}
+    cmd['query']         = {:locked_by => locked_by, :_id => Mongo::ObjectID.from_string(doc['_id'].to_s)}
+    cmd['limit']         = 1
+    cmd['new']           = true
+    value_of collection.db.command(cmd)    
+  end
+
+  # Remove the document from the queue. This should be called when the work is done and the document is no longer needed.
+  # You must provide the process identifier that the document was locked with to complete it.
+  def complete(doc, locked_by)
+    cmd = OrderedHash.new
+    cmd['findandmodify'] = @config[:collection]
+    cmd['query']         = {:locked_by => locked_by, :_id => Mongo::ObjectID.from_string(doc['_id'].to_s)}
+    cmd['remove']        = true
+    cmd['limit']         = 1
+    value_of collection.db.command(cmd)    
+  end
+ 
+  # Increase the error count on the locked document and release. Optionally provide an error message.
+  def error(doc, error_message=nil)
+    doc['attempts'] +=1
+    collection.save doc.merge({
+      'last_error' => error_message,
+      'locked_by'  => nil,
+      'locked_at'  => nil
+    })
+  end  
   
   protected
   
-  def collection
+  def sort_hash #:nodoc:
+    sh = OrderedHash.new
+    sh['priority'] = -1 ; sh
+  end
+  
+  def value_of(result) #:nodoc:
+    result['okay'] == 0 ? nil : result['value']
+  end
+  
+  def collection #:nodoc:
     @connection.db(@config[:database]).collection(@config[:collection])
   end
 end

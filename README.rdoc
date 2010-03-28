@@ -1,4 +1,4 @@
-= MongoQueue
+= Mongo::Queue
 
 An extensible thread safe job/message queueing system that uses mongodb as the persistent storage engine.
 
@@ -21,19 +21,19 @@ You can configure everything from where the data is stored, to the amount of tim
 locked, to the number of times the job will be attempted, and more. Below are the default configuration options
 which can be adjusted to your taste.
 
-    db = Mongo::Connection.whatever...
+    db = Mongo::Connection.new
 
     options = {
       :database   => 'mongo_queue', 
       :collection => 'mongo_queue',
-      :timeout    => 30, # number of seconds that an item will remain locked
+      :timeout    => 300, # number of seconds that an item will remain locked
       :attempts   => 3   # number of times attempts to lock and complete the item before ignoring
     }
-    queue = MongoQueue.new(db, options)
+    queue = Mongo::Queue.new(db, options)
 
 === Inserting Jobs
 A job is inserted as a hash in to the document store, but you will want to avoid using the protected keys which
-enable MongoQueue to operate effectively as a queue system. Avoid using the following fields in your queue messages;
+enable Mongo::Queue to operate effectively as a queue system. Avoid using the following fields in your queue messages;
 * locked_at
 * locked_by
 * attempts
@@ -43,7 +43,7 @@ enable MongoQueue to operate effectively as a queue system. Avoid using the foll
 * last_error
     
     job = {
-      :url      => 'http://example.com/',
+      :site     => 'http://example.com/',
       :foo      => 'More Stuff',
       :priority => 10
     }
@@ -55,6 +55,13 @@ jobs have been completed. This can be completed within a loop, and even be threa
 make sure that you generate a unique string which you can reference the worker with throughout it's lifetime.
 
     require 'digest/md5'
+    require 'rubygems'
+    require 'mongo'
+    require 'mongo_queue'
+    
+    db = Mongo::Connection.new('localhost')
+    queue = Mongo::Queue.new(db)
+    
     process_id = Digest::MD5.hexdigest("#{Socket.gethostname}-#{Process.pid}-#{Thread.current}")
 
     queue.cleanup! # remove expired locks
