@@ -24,6 +24,7 @@ Gem::Specification.new do |s|
      "Rakefile",
      "VERSION",
      "lib/mongo_queue.rb",
+     "mongo_queue.gemspec",
      "spec/mongo_queue_spec.rb",
      "spec/spec_helper.rb"
   ]
