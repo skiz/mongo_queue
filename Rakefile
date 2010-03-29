@@ -5,8 +5,8 @@ begin
   require 'jeweler'
   Jeweler::Tasks.new do |gem|
     gem.name = "mongo_queue"
-    gem.summary = %Q{TODO: one-line summary of your gem}
-    gem.description = %Q{TODO: longer description of your gem}
+    gem.summary = "Mongo based message/job queue"
+    gem.description = "An extensible thread safe job/message queueing system that uses mongodb as the persistent storage engine."
     gem.email = "jmartin@webwideconsulting.com"
     gem.homepage = "http://github.com/skiz/mongo_queue"
     gem.authors = ["Josh Martin"]

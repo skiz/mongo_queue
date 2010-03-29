@@ -10,7 +10,7 @@ Gem::Specification.new do |s|
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Josh Martin"]
   s.date = %q{2010-03-28}
-  s.description = %q{TODO: longer description of your gem}
+  s.description = %q{An extensible thread safe job/message queueing system that uses mongodb as the persistent storage engine.}
   s.email = %q{jmartin@webwideconsulting.com}
   s.extra_rdoc_files = [
     "LICENSE",
@@ -32,7 +32,7 @@ Gem::Specification.new do |s|
   s.rdoc_options = ["--charset=UTF-8"]
   s.require_paths = ["lib"]
   s.rubygems_version = %q{1.3.5}
-  s.summary = %q{TODO: one-line summary of your gem}
+  s.summary = %q{Mongo based message/job queue}
   s.test_files = [
     "spec/mongo_queue_spec.rb",
      "spec/spec_helper.rb"
