@@ -73,6 +73,28 @@ describe Mongo::Queue do
     end
   end
     
+  describe "Queue Information" do
+    it "should provide a convenience method to retrieve stats about the queue" do
+      @@queue.stats.should eql({
+        :locked    => 0,
+        :available => 0,
+        :errors    => 0
+      })
+    end
+    
+    it "should calculate properly" do
+      @first  = @@queue.insert(:msg => 'First',  :attempts => 4)
+      @second = @@queue.insert(:msg => 'Second', :priority => 2)
+      @third  = @@queue.insert(:msg => 'Third',  :priority => 6)
+      @fourth = @@queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
+      @@queue.stats.should eql({
+        :locked    => 1,
+        :available => 2,
+        :errors    => 1
+      })
+    end
+  end
+  
   describe "Working with the queue" do
     before(:each) do
       @first  = @@queue.insert(:msg => 'First')

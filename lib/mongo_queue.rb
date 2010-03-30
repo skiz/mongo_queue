@@ -98,7 +98,15 @@ class Mongo::Queue
       'locked_by'  => nil,
       'locked_at'  => nil
     })
-  end  
+  end 
+  
+  # provides some information about what is in the queue
+  def stats
+    { :locked    => collection.find({:locked_by => /.*/}).count,
+      :errors    => collection.find({:attempts => {'$gte' => config[:attempts]}}).count,
+      :available => collection.find({:locked_by => nil, :attempts => {'$lt' => @config[:attempts]}}).count }
+  end
+   
   
   protected
   

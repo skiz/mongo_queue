@@ -9,7 +9,7 @@ Gem::Specification.new do |s|
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Josh Martin"]
-  s.date = %q{2010-03-28}
+  s.date = %q{2010-03-29}
   s.description = %q{An extensible thread safe job/message queueing system that uses mongodb as the persistent storage engine.}
   s.email = %q{jmartin@webwideconsulting.com}
   s.extra_rdoc_files = [
