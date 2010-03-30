@@ -100,11 +100,27 @@ class Mongo::Queue
     })
   end 
   
-  # provides some information about what is in the queue
+  # Provides some information about what is in the queue. We are using an eval to ensure that a
+  # lock is obtained during the execution of this query so that the results are not skewed.
+  # please be aware that it will lock the database during the execution, so avoid using it too
+  # often, even though it it very tiny and should be relatively fast.
   def stats
-    { :locked    => collection.find({:locked_by => /.*/}).count,
-      :errors    => collection.find({:attempts => {'$gte' => config[:attempts]}}).count,
-      :available => collection.find({:locked_by => nil, :attempts => {'$lt' => @config[:attempts]}}).count }
+    js = "function queue_stat(){
+              return db.eval(
+              function(){
+                var a = db.#{config[:collection]}.count({'locked_by': null, 'attempts': {$lt: #{config[:attempts]}}});
+                var l = db.#{config[:collection]}.count({'locked_by': /.*/});
+                var e = db.#{config[:collection]}.count({'attempts': {$gte: #{config[:attempts]}}});
+                var t = db.#{config[:collection]}.count();
+                return [a, l, e, t];
+              }
+            );
+          }"
+    available, locked, errors, total = collection.db.eval(js)
+    { :locked    => locked.to_i,
+      :errors    => errors.to_i,
+      :available => available.to_i,
+      :total     => total.to_i }
   end
    
   

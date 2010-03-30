@@ -75,6 +75,13 @@ make sure that you generate a unique string which you can reference the worker w
         queue.error(doc, e.message)
       end
     end
+    
+=== Queue Status
+There is an additional +stat+ method available on the queue object which provides a hash with some information that
+may be useful when reviewing the current contents of the queue.
+
+   queue.stat
+   # => {:locked => 34, :available => 34536, :errors => 0, :total => 34570}
 
 == Copyright
 

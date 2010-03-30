@@ -78,7 +78,8 @@ describe Mongo::Queue do
       @@queue.stats.should eql({
         :locked    => 0,
         :available => 0,
-        :errors    => 0
+        :errors    => 0,
+        :total     => 0
       })
     end
     
@@ -90,7 +91,8 @@ describe Mongo::Queue do
       @@queue.stats.should eql({
         :locked    => 1,
         :available => 2,
-        :errors    => 1
+        :errors    => 1,
+        :total     => 4
       })
     end
   end
