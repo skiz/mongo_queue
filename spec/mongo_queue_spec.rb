@@ -2,40 +2,40 @@ require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 describe Mongo::Queue do
   
-  before(:suite) do
+  before(:all) do
     opts   = {
       :database   => 'mongo_queue_spec',
       :collection => 'spec',
       :attempts   => 4,
       :timeout    => 60}
-    @@db = Mongo::Connection.new('localhost', nil, :pool_size => 4)
-    @@queue = Mongo::Queue.new(@@db, opts)
+    @db = Mongo::Connection.new('localhost', nil, :pool_size => 4)
+    @queue = Mongo::Queue.new(@db, opts)
   end
   
   before(:each) do
-    @@queue.flush!
+    @queue.flush!
   end
   
   describe "Configuration" do
 
     it "should set the connection" do
-      @@queue.connection.should be(@@db)
+      @queue.connection.should be(@db)
     end
 
     it "should allow database option" do
-      @@queue.config[:database].should eql('mongo_queue_spec')
+      @queue.config[:database].should eql('mongo_queue_spec')
     end
     
     it "should allow collection option" do
-      @@queue.config[:collection].should eql('spec')
+      @queue.config[:collection].should eql('spec')
     end
 
     it "should allow attempts option" do
-      @@queue.config[:attempts].should eql(4)
+      @queue.config[:attempts].should eql(4)
     end
   
     it "should allow timeout option" do
-      @@queue.config[:timeout].should eql(60)
+      @queue.config[:timeout].should eql(60)
     end
   
     it "should have a sane set of defaults" do
@@ -48,8 +48,8 @@ describe Mongo::Queue do
 
   describe "Inserting a Job" do
     before(:each) do
-      @@queue.insert(:message => 'MongoQueueSpec')
-      @item = @@queue.send(:collection).find_one  
+      @queue.insert(:message => 'MongoQueueSpec')
+      @item = @queue.send(:collection).find_one  
     end
     
     it "should set priority to 0 by default" do
@@ -75,7 +75,7 @@ describe Mongo::Queue do
     
   describe "Queue Information" do
     it "should provide a convenience method to retrieve stats about the queue" do
-      @@queue.stats.should eql({
+      @queue.stats.should eql({
         :locked    => 0,
         :available => 0,
         :errors    => 0,
@@ -84,11 +84,11 @@ describe Mongo::Queue do
     end
     
     it "should calculate properly" do
-      @first  = @@queue.insert(:msg => 'First',  :attempts => 4)
-      @second = @@queue.insert(:msg => 'Second', :priority => 2)
-      @third  = @@queue.insert(:msg => 'Third',  :priority => 6)
-      @fourth = @@queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
-      @@queue.stats.should eql({
+      @first  = @queue.insert(:msg => 'First',  :attempts => 4)
+      @second = @queue.insert(:msg => 'Second', :priority => 2)
+      @third  = @queue.insert(:msg => 'Third',  :priority => 6)
+      @fourth = @queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
+      @queue.stats.should eql({
         :locked    => 1,
         :available => 2,
         :errors    => 1,
@@ -99,39 +99,39 @@ describe Mongo::Queue do
   
   describe "Working with the queue" do
     before(:each) do
-      @first  = @@queue.insert(:msg => 'First')
-      @second = @@queue.insert(:msg => 'Second', :priority => 2)
-      @third  = @@queue.insert(:msg => 'Third',  :priority => 6)
-      @fourth = @@queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
+      @first  = @queue.insert(:msg => 'First')
+      @second = @queue.insert(:msg => 'Second', :priority => 2)
+      @third  = @queue.insert(:msg => 'Third',  :priority => 6)
+      @fourth = @queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
     end
     
     it "should lock the next document by priority" do
-      doc = @@queue.lock_next('Test')
+      doc = @queue.lock_next('Test')
       doc['msg'].should eql('Third')
     end
     
     it "should release and relock the next document" do
-      @@queue.release(@fourth, 'Example')
-      @@queue.lock_next('Bob')['msg'].should eql('Fourth')
+      @queue.release(@fourth, 'Example')
+      @queue.lock_next('Bob')['msg'].should eql('Fourth')
     end
     
     it "should remove completed items" do
-      doc = @@queue.lock_next('grr')
-      @@queue.complete(doc,'grr')
-      @@queue.lock_next('grr')['msg'].should eql('Second')
+      doc = @queue.lock_next('grr')
+      @queue.complete(doc,'grr')
+      @queue.lock_next('grr')['msg'].should eql('Second')
     end
     
     it "should return nil when unable to lock" do
-      4.times{ @@queue.lock_next('blah') }
-      @@queue.lock_next('blah').should eql(nil)
+      4.times{ @queue.lock_next('blah') }
+      @queue.lock_next('blah').should eql(nil)
     end
   end
   
   describe "Error Handling" do
     it "should allow document error handling" do
-      doc = @@queue.insert(:stuff => 'Broken')
-      2.times{ @@queue.error(doc, 'I think I broke it') }
-      doc = @@queue.lock_next('Money')
+      doc = @queue.insert(:stuff => 'Broken')
+      2.times{ @queue.error(doc, 'I think I broke it') }
+      doc = @queue.lock_next('Money')
       doc['attempts'].should eql(2)
       doc['last_error'].should eql('I think I broke it')
     end
@@ -139,9 +139,9 @@ describe Mongo::Queue do
   
   describe "Cleaning up" do
     it "should remove all of the stale locks" do
-      @@queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
-      @@queue.cleanup!
-      @@queue.lock_next('Foo')['msg'].should eql('Fourth')
+      @queue.insert(:msg => 'Fourth', :locked_by => 'Example', :locked_at => Time.now.utc - 60 * 60 * 60, :priority => 99)
+      @queue.cleanup!
+      @queue.lock_next('Foo')['msg'].should eql('Fourth')
     end
   end
     

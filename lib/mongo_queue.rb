@@ -40,7 +40,7 @@ class Mongo::Queue
   #    queue.insert(:name => 'Billy', :email => 'billy@example.com', :message => 'Here is the thing you asked for')
   def insert(hash)
     id = collection.insert DEFAULT_INSERT.merge(hash)
-    collection.find_one(:_id => Mongo::ObjectID.from_string(id.to_s))
+    collection.find_one(:_id => BSON::ObjectId.from_string(id.to_s))
   end
   
   # Lock and return the next queue message if one is available. Returns nil if none are available. Be sure to
@@ -48,7 +48,7 @@ class Mongo::Queue
   # Example:
   #    locked_doc = queue.lock_next(Thread.current.object_id)
   def lock_next(locked_by)
-    cmd = OrderedHash.new
+    cmd = BSON::OrderedHash.new
     cmd['findandmodify'] = @config[:collection]
     cmd['update']        = {'$set' => {:locked_by => locked_by, :locked_at => Time.now.utc}} 
     cmd['query']         = {:locked_by => nil, :locked_by => nil, :attempts => {'$lt' => @config[:attempts]}}
@@ -70,10 +70,10 @@ class Mongo::Queue
   
   # Release a lock on the specified document and allow it to become available again.
   def release(doc, locked_by)
-    cmd = OrderedHash.new
+    cmd = BSON::OrderedHash.new
     cmd['findandmodify'] = @config[:collection]
     cmd['update']        = {'$set' => {:locked_by => nil, :locked_at => nil}}
-    cmd['query']         = {:locked_by => locked_by, :_id => Mongo::ObjectID.from_string(doc['_id'].to_s)}
+    cmd['query']         = {:locked_by => locked_by, :_id => BSON::ObjectId.from_string(doc['_id'].to_s)}
     cmd['limit']         = 1
     cmd['new']           = true
     value_of collection.db.command(cmd)    
@@ -82,9 +82,9 @@ class Mongo::Queue
   # Remove the document from the queue. This should be called when the work is done and the document is no longer needed.
   # You must provide the process identifier that the document was locked with to complete it.
   def complete(doc, locked_by)
-    cmd = OrderedHash.new
+    cmd = BSON::OrderedHash.new
     cmd['findandmodify'] = @config[:collection]
-    cmd['query']         = {:locked_by => locked_by, :_id => Mongo::ObjectID.from_string(doc['_id'].to_s)}
+    cmd['query']         = {:locked_by => locked_by, :_id => BSON::ObjectId.from_string(doc['_id'].to_s)}
     cmd['remove']        = true
     cmd['limit']         = 1
     value_of collection.db.command(cmd)    
@@ -127,7 +127,7 @@ class Mongo::Queue
   protected
   
   def sort_hash #:nodoc:
-    sh = OrderedHash.new
+    sh = BSON::OrderedHash.new
     sh['priority'] = -1 ; sh
   end
   
