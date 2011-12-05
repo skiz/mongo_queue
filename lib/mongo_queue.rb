@@ -55,7 +55,12 @@ class Mongo::Queue
     cmd['sort']          = sort_hash
     cmd['limit']         = 1
     cmd['new']           = true
-    value_of collection.db.command(cmd)
+    
+    begin
+      value_of collection.db.command(cmd)    
+    rescue Mongo::OperationFailure
+     nil
+    end
   end
   
   # Removes stale locks that have exceeded the timeout and places them back in the queue.
