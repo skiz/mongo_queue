@@ -1,46 +1,21 @@
-require 'rubygems'
-require 'rake'
+require 'bundler'
+require 'rdoc/task'
+require 'rspec/core/rake_task'
 
-begin
-  require 'jeweler'
-  Jeweler::Tasks.new do |gem|
-    gem.name = "mongo_queue"
-    gem.summary = "Mongo based message/job queue"
-    gem.description = "An extensible thread safe job/message queueing system that uses mongodb as the persistent storage engine."
-    gem.email = "jmartin@webwideconsulting.com"
-    gem.homepage = "http://github.com/skiz/mongo_queue"
-    gem.authors = ["Josh Martin"]
-    gem.add_development_dependency "rspec", ">= 0"
-  end
-  Jeweler::GemcutterTasks.new
-rescue LoadError
-  puts "Jeweler (or a dependency) not available. Install it with: gem install jeweler"
+Bundler::GemHelper.install_tasks
+
+RSpec::Core::RakeTask.new do |t|
+  t.rspec_opts = %w(--format documentation --colour)
 end
 
-require 'spec/rake/spectask'
-Spec::Rake::SpecTask.new(:spec) do |spec|
-  spec.libs << 'lib' << 'spec'
-  spec.spec_files = FileList['spec/*_spec.rb']
-end
 
-Spec::Rake::SpecTask.new(:rcov) do |spec|
-  spec.libs << 'lib' << 'spec'
-  spec.pattern = 'spec/*_spec.rb'
-  spec.rcov = true
-end
-
-task :spec => :check_dependencies
-
-task :default => :spec
-
-require 'rake/rdoctask'
-Rake::RDocTask.new do |rdoc|
+RDoc::Task.new do |rdoc|
   version = File.exist?('VERSION') ? File.read('VERSION') : ""
+
   rdoc.rdoc_dir = 'rdoc'
-  # rdoc.options << '--diagram'
-  rdoc.title = "Epoch Notifier #{version}"
+  rdoc.title = "mongo_queue #{version}"
   rdoc.rdoc_files.include('README*')
   rdoc.rdoc_files.include('lib/**/*.rb')
 end
 
-require 'metric_fu'
+task :default => 'spec'
